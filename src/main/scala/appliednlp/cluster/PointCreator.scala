@@ -1,5 +1,7 @@
 package appliednlp.cluster
 
+import scala.io.Source
+
 import nak.cluster._
 import nak.util.CollectionUtil._
 import chalk.util.SimpleTokenizer
@@ -23,7 +25,16 @@ trait PointCreator extends (String => Iterator[(String,String,Point)])
  */
 object DirectCreator extends PointCreator {
 
- def apply(filename: String) = List[(String,String,Point)]().toIterator
+  def apply(filename: String) = {
+    Source.fromFile(filename).getLines().map { line =>
+      line.split("""\s+""") match {
+        case Array(id, label, x, y) => {
+          val point = Point(Vector(x.toDouble, y.toDouble))
+          (id, label, point)
+        }
+      }
+    }.toIterator
+  }
 
 }
 
