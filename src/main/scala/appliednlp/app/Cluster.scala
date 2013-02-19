@@ -30,10 +30,14 @@ object Cluster {
     val pointCreator = DirectCreator
     val pointData = pointCreator(opts.filename())
 
+    // Transform the points
+    val origPoints = pointData.map(_._3).toIndexedSeq
+    val pointTransformer = PointTransformer(opts.transform(), origPoints)
+    val transformedPoints = pointTransformer(origPoints)
+
     // Run Kmeans
-    val points = pointData.map(_._3).toIndexedSeq
     val distanceFunction = DistanceFunction(opts.distance())
-    val kmeans = new Kmeans(points, distanceFunction, fixedSeedForRandom=true)
+    val kmeans = new Kmeans(transformedPoints, distanceFunction, fixedSeedForRandom=true)
     val (dispersion, centroids) = kmeans.run(opts.k())
 
     // Print the coordinates of each centroid
