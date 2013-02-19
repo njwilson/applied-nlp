@@ -45,7 +45,22 @@ object DirectCreator extends PointCreator {
  */
 object SchoolsCreator extends PointCreator {
 
-  def apply(filename: String) = List[(String,String,Point)]().toIterator
+  def apply(filename: String) = {
+    Source.fromFile(filename).getLines().flatMap { line =>
+      val split = line.split("""\s+""")
+
+      // Split school name (possible multiple words) and scores into separate arrays
+      split.splitAt(split.length - 4) match {
+        case (schoolArray, Array(r4, m4, r6, m6)) => {
+          val schoolName = schoolArray.mkString("_")
+          Array(makePoint(schoolName, "4", r4, m4), makePoint(schoolName, "6", r6, m6))
+        }
+      }
+    }.toIterator
+  }
+
+  private def makePoint(school: String, grade: String, reading: String, math: String) =
+    (school + "_" + grade + "th", grade, Point(Vector(reading.toDouble, math.toDouble)))
 
 }
 
