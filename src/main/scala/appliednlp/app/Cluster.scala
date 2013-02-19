@@ -28,22 +28,25 @@ object Cluster {
 
     // Load the data to cluster
     val pointCreator = DirectCreator
-    val pointData = pointCreator(opts.filename())
+    val (_, goldLabels, origPoints) = pointCreator(opts.filename()).toIndexedSeq.unzip3
 
     // Transform the points
-    val origPoints = pointData.map(_._3).toIndexedSeq
     val pointTransformer = PointTransformer(opts.transform(), origPoints)
     val transformedPoints = pointTransformer(origPoints)
 
     // Run Kmeans
     val distanceFunction = DistanceFunction(opts.distance())
     val kmeans = new Kmeans(transformedPoints, distanceFunction, fixedSeedForRandom=true)
-    val (dispersion, centroids) = kmeans.run(opts.k())
+    val (_, centroids) = kmeans.run(opts.k())
 
     // Print the coordinates of each centroid
     if (opts.showCentroids()) {
       centroids.foreach(println)
     }
+
+    // Display the confusion matrix
+    val (_, predictedMemberships) = kmeans.computeClusterMemberships(centroids)
+    println(ClusterConfusionMatrix(goldLabels, centroids.length, predictedMemberships))
 
   }
 
