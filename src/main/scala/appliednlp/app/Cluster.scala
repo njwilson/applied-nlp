@@ -27,7 +27,7 @@ object Cluster {
     Logger.getRootLogger.setLevel(logLevel)
 
     // Load the data to cluster
-    val pointCreator = DirectCreator
+    val pointCreator = PointCreator(opts.features())
     val (_, goldLabels, origPoints) = pointCreator(opts.filename()).toIndexedSeq.unzip3
 
     // Transform the points
