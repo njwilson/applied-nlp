@@ -21,6 +21,21 @@ import org.apache.log4j.Level
 trait PointCreator extends (String => Iterator[(String,String,Point)])
 
 /**
+ * A companion object to the PointCreator trait that helps select the
+ * PointCreator corresponding to each string description.
+ */
+object PointCreator {
+  def apply(description: String) = description match {
+    case "standard" => DirectCreator
+    case "schools" => SchoolsCreator
+    case "countries" => CountriesCreator
+    case "fed-simple" => new FederalistCreator(simple=true)
+    case "fed-full" => new FederalistCreator(simple=false)
+    case _ => throw new MatchError("Invalid point creator function: " + description)
+  }
+}
+
+/**
  * Read data in the standard format for use with k-means.
  */
 object DirectCreator extends PointCreator {
