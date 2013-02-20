@@ -85,7 +85,19 @@ object SchoolsCreator extends PointCreator {
  */
 object CountriesCreator extends PointCreator {
 
-  def apply(filename: String) = List[(String,String,Point)]().toIterator
+  def apply(filename: String) = {
+    Source.fromFile(filename).getLines().map { line =>
+      val split = line.split("""\s+""")
+
+      // Split country names (possible multiple words) and rates into separate arrays
+      split.splitAt(split.length - 2) match {
+        case (countryArray, Array(birthRate, deathRate)) => {
+          val countryName = countryArray.mkString("_")
+          (countryName, "1", Point(Vector(birthRate.toDouble, deathRate.toDouble)))
+        }
+      }
+    }.toIterator
+  }
 
 }
 
