@@ -110,7 +110,21 @@ object CountriesCreator extends PointCreator {
  */
 class FederalistCreator(simple: Boolean = false) extends PointCreator {
 
-  def apply(filename: String) = List[(String,String,Point)]().toIterator
+  def apply(filename: String) = {
+    val articles = FederalistArticleExtractor(filename)
+
+    // Extract points from appropriate type of features (simple or full)
+    val extractor = if(simple) extractSimple(_) else extractFull(_)
+    val points = extractor(articles.map(_("text")))
+
+    // Assemble each point with its ID and label
+    (articles.zip(points)).map { case (article, point) =>
+      val label = article("author").replaceAll("""\s+""", "_")
+      (article("id"), label, point)
+    }.toIterator
+  }
+
+  lazy val SIMPLE_DIMENSIONS = Vector("the", "people", "which")
 
   /**
    * Given the text of an article, compute the frequency of "the", "people"
@@ -123,7 +137,15 @@ class FederalistCreator(simple: Boolean = false) extends PointCreator {
    *              FederalistArticleExtractor).
    */
   def extractSimple(texts: IndexedSeq[String]): IndexedSeq[Point] = {
-    Vector[Point]()
+    texts.map { text =>
+      // Take all the lowercase tokens and filter out the ones we don't want to count
+      val relevantTokens = SimpleTokenizer(text).map(_.toLowerCase).filter(token => SIMPLE_DIMENSIONS.contains(token))
+
+      // Count the appropriate words for each dimension
+      val dimensionValues = SIMPLE_DIMENSIONS.map(word => relevantTokens.count(_ == word)).map(_.toDouble)
+
+      Point(dimensionValues)
+    }
   }
 
   /**
