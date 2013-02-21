@@ -150,7 +150,7 @@ class FederalistCreator(simple: Boolean = false) extends PointCreator {
     }
   }
 
-  val NUM_TOP_TOKENS = 30
+  val NUM_TOP_TOKENS = 100
 
   /**
    * Given the text of an article, extract features as best you can to try to
