@@ -151,6 +151,7 @@ class FederalistCreator(simple: Boolean = false) extends PointCreator {
   }
 
   val NUM_TOP_TOKENS = 100
+  val NUM_TOP_BIGRAMS = 20
 
   /**
    * Given the text of an article, extract features as best you can to try to
@@ -161,28 +162,40 @@ class FederalistCreator(simple: Boolean = false) extends PointCreator {
    *              FederalistArticleExtractor).
    */
   def extractFull(texts: IndexedSeq[String]): IndexedSeq[Point] = {
+    // As throwaway homework code often does, this turned in to quite the mess...
 
-    // Get the token counts from the combined texts
-    val allCounts = tokensToCounts(SimpleTokenizer(texts.mkString(" ")))
+    val allTokens = SimpleTokenizer(texts.mkString(" "))
+    val allWords = allTokens.filter(_(0).isLetter)
+    val allBigrams = allWords.map(_.toLowerCase).sliding(2).toVector.map { case IndexedSeq(x, y) => x + " " + y }
 
-    // Find the top NUM_TOP_TOKENS most common tokens
+    // Get the unigram and bigram counts from the combined texts
+    val allCounts = tokensToCounts(allTokens)
+    val allBigramCounts = tokensToCounts(allBigrams)
+
+    // Find the top NUM_TOP_TOKENS most common tokens and top NUM_TOP_BIGRAMS bigrams
     val topTokens = allCounts.toIndexedSeq.map { case (x, y) => (y, x) }.sorted.takeRight(NUM_TOP_TOKENS).map(_._2)
+    val topBigrams = allBigramCounts.toIndexedSeq.map { case (x, y) => (y, x) }.sorted.takeRight(NUM_TOP_BIGRAMS).map(_._2)
 
     // Create a Point for each text
     texts.map { text =>
       val features = new immutable.VectorBuilder[Double]()
 
       val tokens = SimpleTokenizer(text)
+      val words = tokens.filter(_(0).isLetter)
+      val bigrams = words.map(_.toLowerCase).sliding(2).toVector.map { case IndexedSeq(x, y) => x + " " + y }
       val counts = tokensToCounts(tokens)
+      val bigramCounts = tokensToCounts(bigrams)
       val ratios = tokenCountsToRatios(counts)
+      val bigramRatios = tokenCountsToRatios(bigramCounts)
 
       // Average word length
       val wordLengths = tokens.filter(_(0).isLetter).map(_.length)
       val avgWordLength = wordLengths.sum.toDouble / wordLengths.length
       features += avgWordLength
 
-      // Token ratios for the top tokens
+      // Token ratios for the top tokens and bigrams
       features ++= featuresFromTokenRatios(ratios, topTokens)
+      features ++= featuresFromTokenRatios(bigramRatios, topBigrams)
 
       // Size of vocabulary
       features += counts.size.toDouble
