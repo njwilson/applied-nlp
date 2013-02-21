@@ -1,5 +1,6 @@
 package appliednlp.cluster
 
+import scala.collection.immutable
 import scala.collection.mutable
 import scala.io.Source
 
@@ -169,14 +170,21 @@ class FederalistCreator(simple: Boolean = false) extends PointCreator {
 
     // Create a Point for each text
     texts.map { text =>
+      val features = new immutable.VectorBuilder[Double]()
+
       val tokens = SimpleTokenizer(text)
       val counts = tokensToCounts(tokens)
       val ratios = tokenCountsToRatios(counts)
 
-      val punctuationRatioFeatures = featuresFromTokenRatios(ratios, topTokens)
+      // Average word length
+      val wordLengths = tokens.filter(_(0).isLetter).map(_.length)
+      val avgWordLength = wordLengths.sum.toDouble / wordLengths.length
+      features += avgWordLength
 
-      val features = punctuationRatioFeatures
-      Point(features)
+      // Token ratios for the top tokens
+      features ++= featuresFromTokenRatios(ratios, topTokens)
+
+      Point(features.result)
     }
   }
 
