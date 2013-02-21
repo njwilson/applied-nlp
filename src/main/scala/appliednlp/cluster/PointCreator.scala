@@ -184,6 +184,9 @@ class FederalistCreator(simple: Boolean = false) extends PointCreator {
       // Token ratios for the top tokens
       features ++= featuresFromTokenRatios(ratios, topTokens)
 
+      // Size of vocabulary
+      features += counts.size.toDouble
+
       Point(features.result)
     }
   }
