@@ -1,5 +1,6 @@
 package appliednlp.cluster
 
+import scala.collection.mutable
 import scala.io.Source
 
 import nak.cluster._
@@ -148,6 +149,8 @@ class FederalistCreator(simple: Boolean = false) extends PointCreator {
     }
   }
 
+  val NUM_TOP_TOKENS = 30
+
   /**
    * Given the text of an article, extract features as best you can to try to
    * get good alignment of the produced clusters with the known authors.
@@ -157,7 +160,42 @@ class FederalistCreator(simple: Boolean = false) extends PointCreator {
    *              FederalistArticleExtractor).
    */
   def extractFull(texts: IndexedSeq[String]): IndexedSeq[Point] = {
-    Vector[Point]()
+
+    // Get the token counts from the combined texts
+    val allCounts = tokensToCounts(SimpleTokenizer(texts.mkString(" ")))
+
+    // Find the top NUM_TOP_TOKENS most common tokens
+    val topTokens = allCounts.toIndexedSeq.map { case (x, y) => (y, x) }.sorted.takeRight(NUM_TOP_TOKENS).map(_._2)
+
+    // Create a Point for each text
+    texts.map { text =>
+      val tokens = SimpleTokenizer(text)
+      val counts = tokensToCounts(tokens)
+      val ratios = tokenCountsToRatios(counts)
+
+      val punctuationRatioFeatures = featuresFromTokenRatios(ratios, topTokens)
+
+      val features = punctuationRatioFeatures
+      Point(features)
+    }
+  }
+
+  // Turn a sequence of tokens into a map of token counts
+  private def tokensToCounts(tokens: IndexedSeq[String]) : Map[String, Int] = {
+    val counts = mutable.Map[String, Int]().withDefaultValue(0)
+    tokens.foreach { token => counts(token.toLowerCase()) += 1 }
+    counts.toMap
+  }
+
+  // Turn a map of token counts into a map of token ratios
+  private def tokenCountsToRatios(tokenCounts: Map[String, Int]) : Map[String, Double] = {
+    val numTokens = tokenCounts.values.sum
+    tokenCounts.mapValues(count => count.toDouble / numTokens).toMap.withDefaultValue(0.0)
+  }
+
+  // Return features for a document with the provided word ratios
+  private def featuresFromTokenRatios(ratios: Map[String, Double], tokens: IndexedSeq[String]) : IndexedSeq[Double] = {
+    tokens.map { token => ratios(token) }
   }
 
 }
