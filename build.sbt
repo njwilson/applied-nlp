@@ -16,8 +16,6 @@ resolvers ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-  "org.scalanlp" % "nak" % "1.1.0",
-  "org.scalanlp" % "chalk" % "1.1.1",
   "org.rogach" %% "scallop" % "0.8.0",
   "gov.nist.math" % "jama" % "1.0.2"
 )
