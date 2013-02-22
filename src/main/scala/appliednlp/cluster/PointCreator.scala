@@ -1,5 +1,9 @@
 package appliednlp.cluster
 
+import scala.collection.immutable
+import scala.collection.mutable
+import scala.io.Source
+
 import nak.cluster._
 import nak.util.CollectionUtil._
 import chalk.util.SimpleTokenizer
@@ -19,11 +23,35 @@ import org.apache.log4j.Level
 trait PointCreator extends (String => Iterator[(String,String,Point)])
 
 /**
+ * A companion object to the PointCreator trait that helps select the
+ * PointCreator corresponding to each string description.
+ */
+object PointCreator {
+  def apply(description: String) = description match {
+    case "standard" => DirectCreator
+    case "schools" => SchoolsCreator
+    case "countries" => CountriesCreator
+    case "fed-simple" => new FederalistCreator(simple=true)
+    case "fed-full" => new FederalistCreator(simple=false)
+    case _ => throw new MatchError("Invalid point creator function: " + description)
+  }
+}
+
+/**
  * Read data in the standard format for use with k-means.
  */
 object DirectCreator extends PointCreator {
 
- def apply(filename: String) = List[(String,String,Point)]().toIterator
+  def apply(filename: String) = {
+    Source.fromFile(filename).getLines().map { line =>
+      line.split("""\s+""") match {
+        case Array(id, label, x, y) => {
+          val point = Point(Vector(x.toDouble, y.toDouble))
+          (id, label, point)
+        }
+      }
+    }.toIterator
+  }
 
 }
 
@@ -34,7 +62,22 @@ object DirectCreator extends PointCreator {
  */
 object SchoolsCreator extends PointCreator {
 
-  def apply(filename: String) = List[(String,String,Point)]().toIterator
+  def apply(filename: String) = {
+    Source.fromFile(filename).getLines().flatMap { line =>
+      val split = line.split("""\s+""")
+
+      // Split school name (possible multiple words) and scores into separate arrays
+      split.splitAt(split.length - 4) match {
+        case (schoolArray, Array(r4, m4, r6, m6)) => {
+          val schoolName = schoolArray.mkString("_")
+          Array(makePoint(schoolName, "4", r4, m4), makePoint(schoolName, "6", r6, m6))
+        }
+      }
+    }.toIterator
+  }
+
+  private def makePoint(school: String, grade: String, reading: String, math: String) =
+    (school + "_" + grade + "th", grade, Point(Vector(reading.toDouble, math.toDouble)))
 
 }
 
@@ -44,7 +87,19 @@ object SchoolsCreator extends PointCreator {
  */
 object CountriesCreator extends PointCreator {
 
-  def apply(filename: String) = List[(String,String,Point)]().toIterator
+  def apply(filename: String) = {
+    Source.fromFile(filename).getLines().map { line =>
+      val split = line.split("""\s+""")
+
+      // Split country names (possible multiple words) and rates into separate arrays
+      split.splitAt(split.length - 2) match {
+        case (countryArray, Array(birthRate, deathRate)) => {
+          val countryName = countryArray.mkString("_")
+          (countryName, "1", Point(Vector(birthRate.toDouble, deathRate.toDouble)))
+        }
+      }
+    }.toIterator
+  }
 
 }
 
@@ -57,7 +112,21 @@ object CountriesCreator extends PointCreator {
  */
 class FederalistCreator(simple: Boolean = false) extends PointCreator {
 
-  def apply(filename: String) = List[(String,String,Point)]().toIterator
+  def apply(filename: String) = {
+    val articles = FederalistArticleExtractor(filename)
+
+    // Extract points from appropriate type of features (simple or full)
+    val extractor = if(simple) extractSimple(_) else extractFull(_)
+    val points = extractor(articles.map(_("text")))
+
+    // Assemble each point with its ID and label
+    (articles.zip(points)).map { case (article, point) =>
+      val label = article("author").replaceAll("""\s+""", "_")
+      (article("id"), label, point)
+    }.toIterator
+  }
+
+  lazy val SIMPLE_DIMENSIONS = Vector("the", "people", "which")
 
   /**
    * Given the text of an article, compute the frequency of "the", "people"
@@ -70,8 +139,19 @@ class FederalistCreator(simple: Boolean = false) extends PointCreator {
    *              FederalistArticleExtractor).
    */
   def extractSimple(texts: IndexedSeq[String]): IndexedSeq[Point] = {
-    Vector[Point]()
+    texts.map { text =>
+      // Take all the lowercase tokens and filter out the ones we don't want to count
+      val relevantTokens = SimpleTokenizer(text).map(_.toLowerCase).filter(token => SIMPLE_DIMENSIONS.contains(token))
+
+      // Count the appropriate words for each dimension
+      val dimensionValues = SIMPLE_DIMENSIONS.map(word => relevantTokens.count(_ == word)).map(_.toDouble)
+
+      Point(dimensionValues)
+    }
   }
+
+  val NUM_TOP_TOKENS = 100
+  val NUM_TOP_BIGRAMS = 20
 
   /**
    * Given the text of an article, extract features as best you can to try to
@@ -82,7 +162,64 @@ class FederalistCreator(simple: Boolean = false) extends PointCreator {
    *              FederalistArticleExtractor).
    */
   def extractFull(texts: IndexedSeq[String]): IndexedSeq[Point] = {
-    Vector[Point]()
+    // As throwaway homework code often does, this turned in to quite the mess...
+
+    val allTokens = SimpleTokenizer(texts.mkString(" "))
+    val allWords = allTokens.filter(_(0).isLetter)
+    val allBigrams = allWords.map(_.toLowerCase).sliding(2).toVector.map { case IndexedSeq(x, y) => x + " " + y }
+
+    // Get the unigram and bigram counts from the combined texts
+    val allCounts = tokensToCounts(allTokens)
+    val allBigramCounts = tokensToCounts(allBigrams)
+
+    // Find the top NUM_TOP_TOKENS most common tokens and top NUM_TOP_BIGRAMS bigrams
+    val topTokens = allCounts.toIndexedSeq.map { case (x, y) => (y, x) }.sorted.takeRight(NUM_TOP_TOKENS).map(_._2)
+    val topBigrams = allBigramCounts.toIndexedSeq.map { case (x, y) => (y, x) }.sorted.takeRight(NUM_TOP_BIGRAMS).map(_._2)
+
+    // Create a Point for each text
+    texts.map { text =>
+      val features = new immutable.VectorBuilder[Double]()
+
+      val tokens = SimpleTokenizer(text)
+      val words = tokens.filter(_(0).isLetter)
+      val bigrams = words.map(_.toLowerCase).sliding(2).toVector.map { case IndexedSeq(x, y) => x + " " + y }
+      val counts = tokensToCounts(tokens)
+      val bigramCounts = tokensToCounts(bigrams)
+      val ratios = tokenCountsToRatios(counts)
+      val bigramRatios = tokenCountsToRatios(bigramCounts)
+
+      // Average word length
+      val wordLengths = tokens.filter(_(0).isLetter).map(_.length)
+      val avgWordLength = wordLengths.sum.toDouble / wordLengths.length
+      features += avgWordLength
+
+      // Token ratios for the top tokens and bigrams
+      features ++= featuresFromTokenRatios(ratios, topTokens)
+      features ++= featuresFromTokenRatios(bigramRatios, topBigrams)
+
+      // Size of vocabulary
+      features += counts.size.toDouble
+
+      Point(features.result)
+    }
+  }
+
+  // Turn a sequence of tokens into a map of token counts
+  private def tokensToCounts(tokens: IndexedSeq[String]) : Map[String, Int] = {
+    val counts = mutable.Map[String, Int]().withDefaultValue(0)
+    tokens.foreach { token => counts(token.toLowerCase()) += 1 }
+    counts.toMap
+  }
+
+  // Turn a map of token counts into a map of token ratios
+  private def tokenCountsToRatios(tokenCounts: Map[String, Int]) : Map[String, Double] = {
+    val numTokens = tokenCounts.values.sum
+    tokenCounts.mapValues(count => count.toDouble / numTokens).toMap.withDefaultValue(0.0)
+  }
+
+  // Return features for a document with the provided word ratios
+  private def featuresFromTokenRatios(ratios: Map[String, Double], tokens: IndexedSeq[String]) : IndexedSeq[Double] = {
+    tokens.map { token => ratios(token) }
   }
 
 }
