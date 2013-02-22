@@ -42,7 +42,10 @@ object Cluster {
 
     // Print the coordinates of each centroid
     if (opts.showCentroids()) {
+      println("\nCentroids in transformed space:")
       centroids.foreach(println)
+      println("\nCentroids in the (possibly approximate) original space:")
+      pointTransformer.undo(centroids).foreach(println)
     }
 
     // Display the full report
