@@ -111,10 +111,101 @@ class ExtendedFeatureExtractor(bitvectors: Map[String, BitVector])
     // duplicate effort and specify it again).
     val basicFeatures = BasicFeatureExtractor(verb, noun, prep, prepObj)
 
-    // Extract more features
+    // ----- Single word features -----
+    val stemmedWords = basicFeatures.map { wordFeature =>
+      AttrVal("stemmed_" + wordFeature.attr, stemmer(wordFeature.value))
+    }
+    val nounForms = List(
+      AttrVal("noun_form", extractForm(noun)),
+      AttrVal("prep_obj_form", extractForm(prepObj)))
+    val suffixes = List(
+      AttrVal("noun_suffix", extractSuffix(noun)),
+      AttrVal("verb_suffix", extractSuffix(verb)),
+      AttrVal("prep_obj_suffix", extractSuffix(prepObj)))
+    val abbreviations = List(
+      AttrVal("noun_abbrev", extractAbbreviation(noun)),
+      AttrVal("prep_obj_abbrev", extractAbbreviation(prepObj)))
+    val hyphens = List(
+      AttrVal("verb_hyphen", extractHyphen(verb)),
+      AttrVal("noun_hyphen", extractHyphen(noun)),
+      AttrVal("prep_obj_hyphen", extractHyphen(prepObj)))
+    val featuresFromSingleWords = stemmedWords ++ nounForms ++ suffixes ++ abbreviations ++ hyphens
+
+    // ----- Pairs of selected single word features -----
+    val prepWithSingleFeatures = featuresFromSingleWords.map { feature =>
+      AttrVal("prep+" + feature.attr, prep + "+" + feature.value)
+    }
+    val stemmedBigrams = comboFeatures(stemmedWords, 2, 2)
+    val stemmedTrigrams = comboFeatures(stemmedWords, 3, 3)
+    val bothNounForms = comboFeatures(nounForms, 2, 2)
+    val featuresFromPairs = prepWithSingleFeatures ++ stemmedBigrams ++ stemmedTrigrams ++ bothNounForms
+
+    // ----- Selected "top N bits" sequences and combinations
+    val selectedTopN = 1.to(32, 5) flatMap { n =>
+      List(
+        AttrVal("verb_top_" + n + "_bits", bitvectors(verb).keepTopBits(n).toInt.toString),
+        AttrVal("noun_top_" + n + "_bits", bitvectors(noun).keepTopBits(n).toInt.toString),
+        AttrVal("prep_obj_top_" + n + "_bits", bitvectors(prepObj).keepTopBits(n).toInt.toString))
+    }
+    val selectedTopPrepsWithSelectedTopN = selectedTopN.flatMap { feature =>
+      10.to(32, 10) map { nPreps =>
+        val attr = "prep_top_" + nPreps + "+" + feature.attr
+        val value = bitvectors(prep).keepTopBits(nPreps).toInt.toString + "+" + feature.value
+        AttrVal(attr, value)
+      }
+    }
+    val featuresFromBitstrings = selectedTopPrepsWithSelectedTopN
+
+    val extendedFeatures = featuresFromSingleWords ++ featuresFromPairs ++ featuresFromBitstrings
 
     // Return the features. You should of course add your features to basic ones.
-    basicFeatures
+    basicFeatures ++ extendedFeatures
+  }
+
+  def comboFeatures(features: Iterable[AttrVal], minSize: Int, maxSize: Int): Iterable[AttrVal] = {
+    features.toSet.subsets.filter { subset =>
+      subset.size >= minSize && subset.size <= maxSize
+    }.map { toCombine =>
+      // Combine this set of AttrVal objects
+      val (names, vals) = toCombine.map { x => (x.attr, x.value) }.unzip
+      AttrVal(names.mkString("+"), vals.mkString("+"))
+    }.toList
+  }
+
+  def extractAbbreviation(word: String): String = {
+    if (word.matches("""[a-zA-Z].*\.""")) "yes" else "no"
+  }
+
+  def extractHyphen(word: String): String = {
+    if (word.matches(""".+-.+""")) "yes" else "no"
+  }
+
+  def topBits(name: String, word: String, topBits: Int): AttrVal = {
+    AttrVal(name + "_top_" + topBits + "_bits", bitvectors(word).keepTopBits(topBits).toInt.toString)
+  }
+
+  def extractForm(word: String): String = {
+    if (word.matches("""-?[0-9].*""")) {
+      if (word.matches("""-?[0-9][^a-zA-Z]*""")) {
+        "number"
+      } else {
+        "number_letter"
+      }
+    } else if (word.matches("""[A-Z].*""")) {
+      if (word.matches("""[A-Z].*[A-Z].*""")) {
+        "XX"
+      } else {
+        "Xx"
+      }
+    } else {
+      "other"
+    }
+  }
+
+  val suffixes = Vector("ing", "ogy", "ed", "s", "ly", "ion", "tion", "ity", "ies")
+
+  def extractSuffix(word: String): String = {
+    (suffixes.flatMap { suffix => if (word.endsWith(suffix)) Some(suffix) else None } ++ Vector("other")).take(1)(0)
   }
 
 }
